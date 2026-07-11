@@ -1,0 +1,17 @@
+{
+  "name": "Smarmy's Tierlist",
+  "short_name": "Smarmy's Tierlist",
+  "description": "Smarmy's Tierlist — the LT/HT Minecraft tier ranking list.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a0d0f",
+  "theme_color": "#e11d2e",
+  "icons": [
+    {
+      "src": "/smarmy-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
