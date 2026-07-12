@@ -5,6 +5,7 @@ import { put } from "@vercel/blob"
 import { query } from "@/lib/db"
 import { isAdmin, signInAdmin, signOutAdmin } from "@/lib/admin"
 import { GAMEMODE_ICONS } from "@/lib/tiers"
+import { COLOR_FIELDS, isValidHex, LOGO_URL_KEY, SITE_TITLE_KEY } from "@/lib/site-settings"
 
 async function requireAdmin() {
   if (!(await isAdmin())) throw new Error("Unauthorized")
@@ -292,6 +293,63 @@ export async function removePlayerSkin(formData: FormData) {
   const playerId = Number(formData.get("playerId"))
   if (!playerId) return
   await query(`UPDATE players SET skin_url = NULL, skin_source = NULL WHERE id = $1`, [playerId])
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+// ----- Site appearance settings -----
+
+async function upsertSetting(key: string, value: string) {
+  await query(
+    `INSERT INTO site_settings (key, value, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()`,
+    [key, value],
+  )
+}
+
+// Saves the appearance form: site title + all theme colors. Only valid hex
+// colors are stored; a blank color field clears that override (reverts to the
+// built-in theme value).
+export async function updateSiteSettings(formData: FormData) {
+  await requireAdmin()
+
+  const title = String(formData.get(SITE_TITLE_KEY) ?? "").trim()
+  if (title) await upsertSetting(SITE_TITLE_KEY, title)
+
+  for (const field of COLOR_FIELDS) {
+    const raw = String(formData.get(field.dbKey) ?? "").trim()
+    if (!raw) {
+      // Blank => remove override so the default theme color is used again.
+      await query(`DELETE FROM site_settings WHERE key = $1`, [field.dbKey])
+      continue
+    }
+    if (isValidHex(raw)) await upsertSetting(field.dbKey, raw.toLowerCase())
+  }
+
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+export async function uploadLogo(formData: FormData) {
+  await requireAdmin()
+  const file = formData.get("logo")
+  if (!(file instanceof File) || file.size === 0) return
+  const ext = (file.name.split(".").pop() || "png").toLowerCase()
+  const blob = await put(`branding/logo-${Date.now()}.${ext}`, file, {
+    access: "public",
+    addRandomSuffix: true,
+  })
+  await upsertSetting(LOGO_URL_KEY, blob.url)
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+// Clears every saved appearance override, restoring the default logo, title,
+// and theme colors.
+export async function resetSiteSettings() {
+  await requireAdmin()
+  await query(`DELETE FROM site_settings`)
   revalidatePath("/admin")
   revalidatePath("/")
 }

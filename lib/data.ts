@@ -2,6 +2,36 @@ import "server-only"
 import { query } from "./db"
 import { ensureSchema } from "./schema"
 import { pointsFor, type Gamemode, type Tierlist, type TierType } from "./tiers"
+import {
+  COLOR_FIELDS,
+  DEFAULT_LOGO_URL,
+  DEFAULT_SITE_TITLE,
+  LOGO_URL_KEY,
+  SITE_TITLE_KEY,
+  type SiteSettings,
+} from "./site-settings"
+
+// Resolved site appearance settings (defaults merged with saved overrides).
+export async function getSiteSettings(): Promise<SiteSettings> {
+  await ensureSchema()
+  const rows = await query<{ key: string; value: string }>(`SELECT key, value FROM site_settings`)
+  const map = new Map(rows.map((r) => [r.key, r.value]))
+
+  const colors: Record<string, string> = {}
+  const overrides: { cssVar: string; value: string }[] = []
+  for (const field of COLOR_FIELDS) {
+    const saved = map.get(field.dbKey)
+    colors[field.key] = saved ?? field.default
+    if (saved) overrides.push({ cssVar: field.cssVar, value: saved })
+  }
+
+  return {
+    siteTitle: map.get(SITE_TITLE_KEY) ?? DEFAULT_SITE_TITLE,
+    logoUrl: map.get(LOGO_URL_KEY) ?? DEFAULT_LOGO_URL,
+    colors,
+    overrides,
+  }
+}
 
 type RawTierlist = { id: number; slug: string; label: string; sort_order: number }
 

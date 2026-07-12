@@ -45,4 +45,14 @@ async function migrate(): Promise<void> {
   if (mainId) {
     await query(`UPDATE gamemodes SET tierlist_id = $1 WHERE tierlist_id IS NULL`, [mainId])
   }
+
+  // Site appearance settings — simple key/value store for logo, title, and
+  // theme colors configured from the admin panel.
+  await query(`
+    CREATE TABLE IF NOT EXISTS site_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `)
 }

@@ -1,7 +1,10 @@
-import { ImageUp, Layers, LogOut, Plus, Trash2 } from "lucide-react"
+import { Award, Gamepad2, ImageUp, Layers, LogOut, Palette, Plus, Trash2, Users } from "lucide-react"
 import type { Player, TitleRow } from "@/lib/data"
+import type { SiteSettings } from "@/lib/site-settings"
 import { GAMEMODE_ICON_OPTIONS, gamemodeIcon, type Gamemode, type Tierlist, tierLabel } from "@/lib/tiers"
 import { PlayerSkin } from "./player-skin"
+import { AdminSection, AdminShell } from "./admin-shell"
+import { AppearanceSettings } from "./appearance-settings"
 import { cn } from "@/lib/utils"
 import {
   createGamemode,
@@ -57,58 +60,58 @@ function TierEditor({
               const current = player.tiers.find((t) => t.gamemode === gm.slug)
               return (
                 <div key={gm.id} className="flex flex-wrap items-center gap-2">
-            <span className="w-24 text-sm font-semibold text-foreground">{gm.label}</span>
+                  <span className="w-24 text-sm font-semibold text-foreground">{gm.label}</span>
 
-            <form action={setTier} className="flex flex-wrap items-center gap-2">
-              <input type="hidden" name="playerId" value={player.id} />
-              <input type="hidden" name="gamemode" value={gm.slug} />
-              <select
-                name="tierType"
-                defaultValue={current?.tierType ?? "HT"}
-                className="min-h-9 cursor-pointer rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                aria-label={`${gm.label} tier type`}
-              >
-                <option value="HT">HT</option>
-                <option value="LT">LT</option>
-              </select>
-              <select
-                name="tier"
-                defaultValue={current?.tier ?? 3}
-                className="min-h-9 cursor-pointer rounded-md border border-border bg-background px-2 text-sm text-foreground"
-                aria-label={`${gm.label} tier number`}
-              >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="submit"
-                className="min-h-9 cursor-pointer rounded-md bg-primary px-3 text-sm font-bold text-primary-foreground"
-              >
-                {current ? "Update" : "Set"}
-              </button>
-            </form>
+                  <form action={setTier} className="flex flex-wrap items-center gap-2">
+                    <input type="hidden" name="playerId" value={player.id} />
+                    <input type="hidden" name="gamemode" value={gm.slug} />
+                    <select
+                      name="tierType"
+                      defaultValue={current?.tierType ?? "HT"}
+                      className="min-h-9 cursor-pointer rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      aria-label={`${gm.label} tier type`}
+                    >
+                      <option value="HT">HT</option>
+                      <option value="LT">LT</option>
+                    </select>
+                    <select
+                      name="tier"
+                      defaultValue={current?.tier ?? 3}
+                      className="min-h-9 cursor-pointer rounded-md border border-border bg-background px-2 text-sm text-foreground"
+                      aria-label={`${gm.label} tier number`}
+                    >
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <option key={n} value={n}>
+                          {n}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="submit"
+                      className="min-h-9 cursor-pointer rounded-md bg-primary px-3 text-sm font-bold text-primary-foreground"
+                    >
+                      {current ? "Update" : "Set"}
+                    </button>
+                  </form>
 
-            {current && (
-              <>
-                <span className="rounded border border-border bg-secondary px-2 py-1 font-mono text-xs text-foreground">
-                  {tierLabel(current.tier, current.tierType)} · {current.points} pts
-                </span>
-                <form action={removeTier}>
-                  <input type="hidden" name="playerId" value={player.id} />
-                  <input type="hidden" name="gamemode" value={gm.slug} />
-                  <button
-                    type="submit"
-                    aria-label={`Remove ${gm.label} tier`}
-                    className="flex min-h-9 cursor-pointer items-center rounded-md border border-border px-2 text-muted-foreground hover:text-primary"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </form>
-              </>
-            )}
+                  {current && (
+                    <>
+                      <span className="rounded border border-border bg-secondary px-2 py-1 font-mono text-xs text-foreground">
+                        {tierLabel(current.tier, current.tierType)} · {current.points} pts
+                      </span>
+                      <form action={removeTier}>
+                        <input type="hidden" name="playerId" value={player.id} />
+                        <input type="hidden" name="gamemode" value={gm.slug} />
+                        <button
+                          type="submit"
+                          aria-label={`Remove ${gm.label} tier`}
+                          className="flex min-h-9 cursor-pointer items-center rounded-md border border-border px-2 text-muted-foreground hover:text-primary"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </form>
+                    </>
+                  )}
                 </div>
               )
             })}
@@ -121,10 +124,10 @@ function TierEditor({
 
 function TierlistManager({ tierlists }: { tierlists: Tierlist[] }) {
   return (
-    <section className="mb-6 rounded-xl border border-border bg-card p-4">
-      <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-muted-foreground">Tier lists</h2>
+    <>
       <p className="mb-3 text-xs text-muted-foreground">
         Each tier list is its own board with its own points — totals are never combined across lists.
+        Add a list to create a new sub-tier section.
       </p>
 
       <ul className="mb-3 flex flex-col gap-2">
@@ -164,18 +167,16 @@ function TierlistManager({ tierlists }: { tierlists: Tierlist[] }) {
           className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 font-bold text-primary-foreground"
         >
           <Plus className="h-4 w-4" />
-          Add
+          Add section
         </button>
       </form>
-    </section>
+    </>
   )
 }
 
 function GamemodeManager({ gamemodes, tierlists }: { gamemodes: Gamemode[]; tierlists: Tierlist[] }) {
   return (
-    <section className="mb-6 rounded-xl border border-border bg-card p-4">
-      <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">Gamemodes</h2>
-
+    <>
       <div className="mb-3 flex flex-col gap-4">
         {tierlists.map((tl) => {
           const listGamemodes = gamemodes.filter((gm) => gm.tierlistId === tl.id)
@@ -303,14 +304,13 @@ function GamemodeManager({ gamemodes, tierlists }: { gamemodes: Gamemode[]; tier
           Add
         </button>
       </form>
-    </section>
+    </>
   )
 }
 
 function TitleManager({ titles }: { titles: TitleRow[] }) {
   return (
-    <section className="mb-6 rounded-xl border border-border bg-card p-4">
-      <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-muted-foreground">Titles</h2>
+    <>
       <p className="mb-3 text-xs text-muted-foreground">
         Rename ranks (e.g. Grandmaster) and set the point threshold + color for each.
       </p>
@@ -421,7 +421,7 @@ function TitleManager({ titles }: { titles: TitleRow[] }) {
           Add
         </button>
       </form>
-    </section>
+    </>
   )
 }
 
@@ -478,65 +478,41 @@ function SkinManager({ player }: { player: Player }) {
   )
 }
 
-export function AdminPanel({
+function PlayersManager({
   players,
   gamemodes,
-  titles,
   tierlists,
 }: {
   players: Player[]
   gamemodes: Gamemode[]
-  titles: TitleRow[]
   tierlists: Tierlist[]
 }) {
   return (
-    <main className="mx-auto max-w-2xl px-4 py-6 lg:max-w-6xl lg:px-8 lg:py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold font-display text-foreground">Smarmy&apos;s Admin</h1>
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-bold text-muted-foreground hover:text-foreground"
-          >
-            <LogOut className="h-4 w-4" />
-            Log out
-          </button>
-        </form>
-      </div>
-
-      <TierlistManager tierlists={tierlists} />
-
-      <GamemodeManager gamemodes={gamemodes} tierlists={tierlists} />
-
-      <TitleManager titles={titles} />
-
-      <form action={createPlayer} className="mb-6 rounded-xl border border-border bg-card p-4">
-        <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-muted-foreground">Add player</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <input
-            name="username"
-            placeholder="Minecraft username"
-            required
-            className="min-h-11 flex-1 rounded-lg border border-border bg-background px-3 text-base text-foreground outline-none focus:border-primary"
-          />
-          <input
-            name="region"
-            placeholder="Region (e.g. NA)"
-            className="min-h-11 w-28 rounded-lg border border-border bg-background px-3 text-base text-foreground outline-none focus:border-primary"
-          />
-          <button
-            type="submit"
-            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 font-bold text-primary-foreground"
-          >
-            <Plus className="h-4 w-4" />
-            Add
-          </button>
-        </div>
+    <>
+      <form action={createPlayer} className="mb-4 flex flex-wrap items-center gap-2 border-b border-border pb-4">
+        <input
+          name="username"
+          placeholder="Minecraft username"
+          required
+          className="min-h-11 flex-1 rounded-lg border border-border bg-background px-3 text-base text-foreground outline-none focus:border-primary"
+        />
+        <input
+          name="region"
+          placeholder="Region (e.g. NA)"
+          className="min-h-11 w-28 rounded-lg border border-border bg-background px-3 text-base text-foreground outline-none focus:border-primary"
+        />
+        <button
+          type="submit"
+          className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg bg-primary px-4 font-bold text-primary-foreground"
+        >
+          <Plus className="h-4 w-4" />
+          Add player
+        </button>
       </form>
 
       <ul className="flex flex-col gap-3">
         {players.map((player) => (
-          <li key={player.id} className="rounded-xl border border-border bg-card p-4">
+          <li key={player.id} className="rounded-xl border border-border bg-background p-4">
             <div className="flex items-center gap-3">
               <PlayerSkin
                 username={player.username}
@@ -570,11 +546,104 @@ export function AdminPanel({
           </li>
         ))}
         {players.length === 0 && (
-          <li className="rounded-xl border border-border bg-card p-6 text-center text-sm text-muted-foreground">
+          <li className="rounded-xl border border-border bg-background p-6 text-center text-sm text-muted-foreground">
             No players yet. Add one above.
           </li>
         )}
       </ul>
+    </>
+  )
+}
+
+export function AdminPanel({
+  players,
+  gamemodes,
+  titles,
+  tierlists,
+  settings,
+}: {
+  players: Player[]
+  gamemodes: Gamemode[]
+  titles: TitleRow[]
+  tierlists: Tierlist[]
+  settings: SiteSettings
+}) {
+  return (
+    <main className="mx-auto max-w-2xl px-4 py-6 lg:max-w-6xl lg:px-8 lg:py-8">
+      <div className="mb-6 flex items-center justify-between">
+        <h1 className="text-2xl font-bold font-display text-foreground">Smarmy&apos;s Admin</h1>
+        <form action={logoutAction}>
+          <button
+            type="submit"
+            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-border bg-card px-3 text-sm font-bold text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+            Log out
+          </button>
+        </form>
+      </div>
+
+      <AdminShell>
+        <AdminSection
+          id="appearance"
+          title="Appearance & branding"
+          icon={<Palette className="h-4 w-4 text-primary" aria-hidden="true" />}
+          keywords={[
+            "appearance",
+            "theme",
+            "color",
+            "colour",
+            "logo",
+            "background",
+            "brand",
+            "title",
+            "name",
+            "border",
+            "style",
+            "design",
+            "primary",
+            "text",
+          ]}
+        >
+          <AppearanceSettings settings={settings} />
+        </AdminSection>
+
+        <AdminSection
+          id="tierlists"
+          title="Tier lists & sections"
+          icon={<Layers className="h-4 w-4 text-primary" aria-hidden="true" />}
+          keywords={["tier list", "tierlist", "board", "subtier", "sub tier", "section", "add section"]}
+        >
+          <TierlistManager tierlists={tierlists} />
+        </AdminSection>
+
+        <AdminSection
+          id="gamemodes"
+          title="Gamemodes"
+          icon={<Gamepad2 className="h-4 w-4 text-primary" aria-hidden="true" />}
+          keywords={["gamemode", "game mode", "sword", "mode", "icon", "bars"]}
+        >
+          <GamemodeManager gamemodes={gamemodes} tierlists={tierlists} />
+        </AdminSection>
+
+        <AdminSection
+          id="titles"
+          title="Titles"
+          icon={<Award className="h-4 w-4 text-primary" aria-hidden="true" />}
+          keywords={["title", "rank", "grandmaster", "threshold", "points", "color"]}
+        >
+          <TitleManager titles={titles} />
+        </AdminSection>
+
+        <AdminSection
+          id="players"
+          title="Players"
+          icon={<Users className="h-4 w-4 text-primary" aria-hidden="true" />}
+          keywords={["player", "user", "username", "skin", "add player", "region", "tier"]}
+        >
+          <PlayersManager players={players} gamemodes={gamemodes} tierlists={tierlists} />
+        </AdminSection>
+      </AdminShell>
     </main>
   )
 }

@@ -9,7 +9,15 @@ import { cn } from "@/lib/utils"
 
 type ModalTab = "points" | "titles"
 
-export function SiteHeader({ titles }: { titles: TitleRow[] }) {
+export function SiteHeader({
+  titles,
+  logoUrl = "/smarmy-logo.png",
+  siteTitle = "Smarmy's Tierlist",
+}: {
+  titles: TitleRow[]
+  logoUrl?: string
+  siteTitle?: string
+}) {
   const [open, setOpen] = useState(false)
   const [modalTab, setModalTab] = useState<ModalTab>("points")
 
@@ -17,7 +25,7 @@ export function SiteHeader({ titles }: { titles: TitleRow[] }) {
     <>
       <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur">
         <div className="mx-auto flex max-w-2xl items-center justify-between gap-3 px-4 py-3 lg:max-w-7xl lg:px-8">
-          <img src="/smarmy-logo.png" alt="Smarmy Tiers" className="h-16 w-auto sm:h-20" />
+          <img src={logoUrl || "/smarmy-logo.png"} alt={siteTitle} className="h-16 w-auto sm:h-20" />
 
           <div className="flex items-center gap-2">
             <button
