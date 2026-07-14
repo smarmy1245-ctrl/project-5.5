@@ -10,6 +10,12 @@ async function requireAdmin() {
   if (!(await isAdmin())) throw new Error("Unauthorized")
 }
 
+// Accepts "#rrggbb" hex colors only; returns null for anything else.
+function cleanHex(input: unknown): string | null {
+  const s = String(input ?? "").trim()
+  return /^#[0-9a-fA-F]{6}$/.test(s) ? s.toLowerCase() : null
+}
+
 async function gamemodeExists(slug: string): Promise<boolean> {
   const rows = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM gamemodes WHERE slug = $1`, [slug])
   return (rows[0]?.n ?? 0) > 0
@@ -33,7 +39,10 @@ export async function createPlayer(formData: FormData) {
   const username = String(formData.get("username") ?? "").trim()
   const region = String(formData.get("region") ?? "").trim() || null
   if (!username) return
-  await query(`INSERT INTO players (username, region) VALUES ($1, $2)`, [username, region])
+  await query(`INSERT INTO players (username, region) VALUES ($1, $2) ON CONFLICT (username) DO NOTHING`, [
+    username,
+    region,
+  ])
   revalidatePath("/admin")
   revalidatePath("/")
 }
@@ -68,11 +77,31 @@ export async function setTier(formData: FormData) {
   }
 
   await query(
-    `INSERT INTO player_tiers (player_id, gamemode, tier, tier_type)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO player_tiers (player_id, gamemode, tier, tier_type, raw_points)
+     VALUES ($1, $2, $3, $4, NULL)
      ON CONFLICT (player_id, gamemode)
-     DO UPDATE SET tier = EXCLUDED.tier, tier_type = EXCLUDED.tier_type`,
+     DO UPDATE SET tier = EXCLUDED.tier, tier_type = EXCLUDED.tier_type, raw_points = NULL`,
     [playerId, gamemode, tier, tierType],
+  )
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+// Points-mode: store the raw point number directly (tier fields unused).
+export async function setPoints(formData: FormData) {
+  await requireAdmin()
+  const playerId = Number(formData.get("playerId"))
+  const gamemode = String(formData.get("gamemode") ?? "")
+  const points = Number(formData.get("points"))
+  if (!playerId || Number.isNaN(points)) return
+  if (!(await gamemodeExists(gamemode))) return
+
+  await query(
+    `INSERT INTO player_tiers (player_id, gamemode, tier, tier_type, raw_points)
+     VALUES ($1, $2, 0, 'HT', $3)
+     ON CONFLICT (player_id, gamemode)
+     DO UPDATE SET raw_points = EXCLUDED.raw_points, tier = 0, tier_type = 'HT'`,
+    [playerId, gamemode, Math.round(points)],
   )
   revalidatePath("/admin")
   revalidatePath("/")
@@ -112,10 +141,10 @@ export async function createGamemode(formData: FormData) {
   await requireAdmin()
   const label = String(formData.get("label") ?? "").trim()
   let icon = String(formData.get("icon") ?? "sword").trim()
+  const color = cleanHex(formData.get("color"))
   if (!label) return
   if (!GAMEMODE_ICONS[icon]) icon = "sword"
 
-  // Which tier list this gamemode belongs to.
   let tierlistId = Number(formData.get("tierlistId"))
   if (!tierlistId || !(await tierlistExists(tierlistId))) {
     const fallback = await defaultTierlistId()
@@ -131,9 +160,19 @@ export async function createGamemode(formData: FormData) {
   const nextOrder = (rows[0]?.max ?? -1) + 1
 
   await query(
-    `INSERT INTO gamemodes (slug, label, icon, sort_order, tierlist_id) VALUES ($1, $2, $3, $4, $5)`,
-    [slug, label, icon, nextOrder, tierlistId],
+    `INSERT INTO gamemodes (slug, label, icon, sort_order, tierlist_id, color) VALUES ($1, $2, $3, $4, $5, $6)`,
+    [slug, label, icon, nextOrder, tierlistId, color],
   )
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+export async function updateGamemodeColor(formData: FormData) {
+  await requireAdmin()
+  const id = Number(formData.get("id"))
+  const color = cleanHex(formData.get("color"))
+  if (!id) return
+  await query(`UPDATE gamemodes SET color = $1 WHERE id = $2`, [color, id])
   revalidatePath("/admin")
   revalidatePath("/")
 }
@@ -153,18 +192,43 @@ export async function moveGamemode(formData: FormData) {
 export async function createTierlist(formData: FormData) {
   await requireAdmin()
   const label = String(formData.get("label") ?? "").trim()
+  const mode = String(formData.get("mode") ?? "tier") === "points" ? "points" : "tier"
   if (!label) return
 
   let slug = slugify(label)
   if (!slug) return
-  // Guarantee a unique slug even if the label repeats.
   const existing = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM tierlists WHERE slug = $1`, [slug])
   if ((existing[0]?.n ?? 0) > 0) slug = `${slug}-${Date.now().toString(36)}`
 
   const rows = await query<{ max: number | null }>(`SELECT MAX(sort_order) AS max FROM tierlists`)
   const nextOrder = (rows[0]?.max ?? -1) + 1
 
-  await query(`INSERT INTO tierlists (slug, label, sort_order) VALUES ($1, $2, $3)`, [slug, label, nextOrder])
+  await query(`INSERT INTO tierlists (slug, label, sort_order, mode) VALUES ($1, $2, $3, $4)`, [
+    slug,
+    label,
+    nextOrder,
+    mode,
+  ])
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+export async function setTierlistMode(formData: FormData) {
+  await requireAdmin()
+  const id = Number(formData.get("id"))
+  const mode = String(formData.get("mode") ?? "tier") === "points" ? "points" : "tier"
+  if (!id) return
+  await query(`UPDATE tierlists SET mode = $1 WHERE id = $2`, [mode, id])
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+export async function renameTierlist(formData: FormData) {
+  await requireAdmin()
+  const id = Number(formData.get("id"))
+  const label = String(formData.get("label") ?? "").trim()
+  if (!id || !label) return
+  await query(`UPDATE tierlists SET label = $1 WHERE id = $2`, [label, id])
   revalidatePath("/admin")
   revalidatePath("/")
 }
@@ -178,7 +242,6 @@ export async function deleteTierlist(formData: FormData) {
   const count = await query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM tierlists`)
   if ((count[0]?.n ?? 0) <= 1) return
 
-  // Remove every gamemode (and its player tiers) that belongs to this list.
   const gms = await query<{ slug: string }>(`SELECT slug FROM gamemodes WHERE tierlist_id = $1`, [id])
   for (const gm of gms) {
     await query(`DELETE FROM player_tiers WHERE gamemode = $1`, [gm.slug])
@@ -192,7 +255,7 @@ export async function deleteTierlist(formData: FormData) {
 export async function updateGamemodeIcon(formData: FormData) {
   await requireAdmin()
   const id = Number(formData.get("id"))
-  let icon = String(formData.get("icon") ?? "").trim()
+  const icon = String(formData.get("icon") ?? "").trim()
   if (!id || !GAMEMODE_ICONS[icon]) return
   await query(`UPDATE gamemodes SET icon = $1 WHERE id = $2`, [icon, id])
   revalidatePath("/admin")
@@ -214,31 +277,24 @@ export async function deleteGamemode(formData: FormData) {
 
 // ----- Title configuration -----
 
-const TITLE_COLORS = [
-  "text-amber-400",
-  "text-orange-400",
-  "text-rose-400",
-  "text-red-400",
-  "text-red-300",
-  "text-emerald-400",
-  "text-sky-400",
-  "text-muted-foreground",
-]
-
 export async function updateTitle(formData: FormData) {
   await requireAdmin()
   const id = Number(formData.get("id"))
   const name = String(formData.get("name") ?? "").trim()
   const min = Number(formData.get("min"))
-  let className = String(formData.get("className") ?? "").trim()
+  const color = cleanHex(formData.get("color"))
   if (!id || !name || Number.isNaN(min)) return
-  if (!TITLE_COLORS.includes(className)) className = "text-red-300"
-  await query(`UPDATE titles SET name = $1, min_points = $2, class_name = $3 WHERE id = $4`, [
-    name,
-    min,
-    className,
-    id,
-  ])
+  await query(`UPDATE titles SET name = $1, min_points = $2, color = $3 WHERE id = $4`, [name, min, color, id])
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+export async function updateTitleColor(formData: FormData) {
+  await requireAdmin()
+  const id = Number(formData.get("id"))
+  const color = cleanHex(formData.get("color"))
+  if (!id) return
+  await query(`UPDATE titles SET color = $1 WHERE id = $2`, [color, id])
   revalidatePath("/admin")
   revalidatePath("/")
 }
@@ -247,10 +303,13 @@ export async function createTitle(formData: FormData) {
   await requireAdmin()
   const name = String(formData.get("name") ?? "").trim()
   const min = Number(formData.get("min"))
-  let className = String(formData.get("className") ?? "").trim()
+  const color = cleanHex(formData.get("color")) ?? "#fca5a5"
   if (!name || Number.isNaN(min)) return
-  if (!TITLE_COLORS.includes(className)) className = "text-red-300"
-  await query(`INSERT INTO titles (name, min_points, class_name) VALUES ($1, $2, $3)`, [name, min, className])
+  await query(`INSERT INTO titles (name, min_points, class_name, color) VALUES ($1, $2, 'text-red-300', $3)`, [
+    name,
+    min,
+    color,
+  ])
   revalidatePath("/admin")
   revalidatePath("/")
 }
@@ -264,6 +323,143 @@ export async function deleteTitle(formData: FormData) {
   revalidatePath("/")
 }
 
+// ----- Theme colors (tier colors + HT/LT accents) -----
+
+export async function updateTierColor(formData: FormData) {
+  await requireAdmin()
+  const tier = Number(formData.get("tier"))
+  const color = cleanHex(formData.get("color"))
+  if (!tier || tier < 1 || tier > 5 || !color) return
+  await query(
+    `INSERT INTO tier_colors (tier, color) VALUES ($1, $2) ON CONFLICT (tier) DO UPDATE SET color = EXCLUDED.color`,
+    [tier, color],
+  )
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+export async function updateAccentColors(formData: FormData) {
+  await requireAdmin()
+  const ht = cleanHex(formData.get("htColor"))
+  const lt = cleanHex(formData.get("ltColor"))
+  if (ht) {
+    await query(
+      `INSERT INTO app_settings (key, value) VALUES ('ht_color', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [ht],
+    )
+  }
+  if (lt) {
+    await query(
+      `INSERT INTO app_settings (key, value) VALUES ('lt_color', $1) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [lt],
+    )
+  }
+  revalidatePath("/admin")
+  revalidatePath("/")
+}
+
+// ----- Bulk JSON import (paste from the Neon console) -----
+
+type ImportTier = { gamemode?: string; tier?: number; tierType?: string; points?: number }
+type ImportPlayer = {
+  username?: string
+  region?: string | null
+  tiers?: ImportTier[]
+  points?: { gamemode?: string; points?: number }[]
+}
+
+export async function importData(_prev: unknown, formData: FormData) {
+  try {
+    await requireAdmin()
+  } catch {
+    return { ok: false, message: "Unauthorized." }
+  }
+
+  const raw = String(formData.get("json") ?? "").trim()
+  if (!raw) return { ok: false, message: "Paste some JSON first." }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return { ok: false, message: "That isn't valid JSON." }
+  }
+
+  // Accept either a bare array or an object with a `players` key.
+  const list: ImportPlayer[] = Array.isArray(parsed)
+    ? (parsed as ImportPlayer[])
+    : Array.isArray((parsed as { players?: unknown }).players)
+      ? ((parsed as { players: ImportPlayer[] }).players)
+      : []
+
+  if (list.length === 0) return { ok: false, message: "No players found in the JSON." }
+
+  // Known gamemodes so we only import tiers for gamemodes that exist.
+  const gmRows = await query<{ slug: string }>(`SELECT slug FROM gamemodes`)
+  const knownGamemodes = new Set(gmRows.map((g) => g.slug))
+
+  let players = 0
+  let tiers = 0
+  for (const p of list) {
+    const username = String(p.username ?? "").trim()
+    if (!username) continue
+    const region = p.region != null ? String(p.region).trim() || null : null
+
+    const inserted = await query<{ id: number }>(
+      `INSERT INTO players (username, region) VALUES ($1, $2)
+       ON CONFLICT (username) DO UPDATE SET region = COALESCE(EXCLUDED.region, players.region)
+       RETURNING id`,
+      [username, region],
+    )
+    const playerId = inserted[0]?.id
+    if (!playerId) continue
+    players++
+
+    // HT/LT tiers.
+    for (const t of p.tiers ?? []) {
+      const gm = String(t.gamemode ?? "")
+      if (!knownGamemodes.has(gm)) continue
+      if (typeof t.points === "number") {
+        await query(
+          `INSERT INTO player_tiers (player_id, gamemode, tier, tier_type, raw_points)
+           VALUES ($1, $2, 0, 'HT', $3)
+           ON CONFLICT (player_id, gamemode) DO UPDATE SET raw_points = EXCLUDED.raw_points, tier = 0`,
+          [playerId, gm, Math.round(t.points)],
+        )
+        tiers++
+        continue
+      }
+      const tier = Number(t.tier)
+      const tierType = t.tierType === "LT" ? "LT" : "HT"
+      if (tier < 1 || tier > 5) continue
+      await query(
+        `INSERT INTO player_tiers (player_id, gamemode, tier, tier_type, raw_points)
+         VALUES ($1, $2, $3, $4, NULL)
+         ON CONFLICT (player_id, gamemode) DO UPDATE SET tier = EXCLUDED.tier, tier_type = EXCLUDED.tier_type, raw_points = NULL`,
+        [playerId, gm, tier, tierType],
+      )
+      tiers++
+    }
+
+    // Explicit points array.
+    for (const pt of p.points ?? []) {
+      const gm = String(pt.gamemode ?? "")
+      if (!knownGamemodes.has(gm) || typeof pt.points !== "number") continue
+      await query(
+        `INSERT INTO player_tiers (player_id, gamemode, tier, tier_type, raw_points)
+         VALUES ($1, $2, 0, 'HT', $3)
+         ON CONFLICT (player_id, gamemode) DO UPDATE SET raw_points = EXCLUDED.raw_points, tier = 0`,
+        [playerId, gm, Math.round(pt.points)],
+      )
+      tiers++
+    }
+  }
+
+  revalidatePath("/admin")
+  revalidatePath("/")
+  return { ok: true, message: `Imported ${players} player(s) and ${tiers} tier/point entr(ies).` }
+}
+
 // ----- Player skin uploads -----
 
 export async function uploadPlayerSkin(formData: FormData) {
@@ -272,8 +468,6 @@ export async function uploadPlayerSkin(formData: FormData) {
   const file = formData.get("skin")
   if (!playerId || !(file instanceof File) || file.size === 0) return
 
-  // "skin" = a raw Minecraft skin texture PNG (face gets pixel-cropped),
-  // "upload" = a regular photo shown directly as the avatar.
   const kind = String(formData.get("kind") ?? "upload") === "skin" ? "skin" : "upload"
 
   const ext = (file.name.split(".").pop() || "png").toLowerCase()

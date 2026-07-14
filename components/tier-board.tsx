@@ -2,7 +2,7 @@
 
 import { ChevronsUp, Trophy } from "lucide-react"
 import type { Player } from "@/lib/data"
-import { tierHeaderClasses } from "@/lib/tiers"
+import { readableOn, type ThemeColors, type TierlistMode } from "@/lib/tiers"
 import { PlayerSkin } from "./player-skin"
 import { cn } from "@/lib/utils"
 
@@ -13,17 +13,66 @@ const COLUMNS = [1, 2, 3, 4, 5] as const
 export function TierBoard({
   players,
   gamemode,
+  mode,
+  themeColors,
   onSelect,
 }: {
   players: Player[]
   gamemode: string
+  mode: TierlistMode
+  themeColors: ThemeColors
   onSelect: (player: Player) => void
 }) {
-  // Group players into tier buckets (1-5) for this gamemode.
+  // ----- Points mode: a single ranked list by raw points -----
+  if (mode === "points") {
+    const ranked = players
+      .map((p) => ({ player: p, t: p.tiers.find((x) => x.gamemode === gamemode) }))
+      .filter((x) => x.t)
+      .sort((a, b) => b.t!.points - a.t!.points || a.player.username.localeCompare(b.player.username))
+
+    if (ranked.length === 0) {
+      return (
+        <div className="rounded-xl border border-border bg-card p-8 text-center text-muted-foreground">
+          No ranked players in this gamemode yet.
+        </div>
+      )
+    }
+
+    return (
+      <ol className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+        {ranked.map(({ player, t }, i) => (
+          <li key={player.id}>
+            <button
+              onClick={() => onSelect(player)}
+              className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 text-left transition-colors hover:border-primary/60"
+            >
+              <span className="w-8 shrink-0 text-center font-display text-lg font-extrabold tabular-nums text-muted-foreground">
+                {i + 1}
+              </span>
+              <PlayerSkin
+                username={player.username}
+                skinUrl={player.skinUrl}
+                skinSource={player.skinSource}
+                size={32}
+                rounded="rounded-md"
+                className="border border-border"
+              />
+              <span className="min-w-0 flex-1 truncate font-bold text-foreground">{player.username}</span>
+              <span className="shrink-0 rounded-md bg-primary/15 px-2 py-1 font-mono text-sm font-bold text-primary">
+                {t!.points} pts
+              </span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+
+  // ----- Tier mode: classic 5-column HT/LT board -----
   const buckets = new Map<number, Entry[]>()
   for (const p of players) {
     const t = p.tiers.find((x) => x.gamemode === gamemode)
-    if (!t) continue
+    if (!t || t.tier < 1) continue
     const list = buckets.get(t.tier) ?? []
     list.push({ player: p, type: t.tierType, points: t.points })
     buckets.set(t.tier, list)
@@ -36,13 +85,13 @@ export function TierBoard({
     <div className="flex gap-3 overflow-x-auto pb-2 lg:overflow-x-visible">
       {COLUMNS.map((tier) => {
         const entries = buckets.get(tier) ?? []
+        const bg = themeColors.tierColors[tier] ?? "#7f1d1d"
+        const fg = readableOn(bg)
         return (
           <div key={tier} className="flex w-48 shrink-0 flex-col lg:w-auto lg:flex-1">
             <div
-              className={cn(
-                "flex items-center justify-center gap-2 rounded-t-xl border px-3 py-3 text-center",
-                tierHeaderClasses(tier),
-              )}
+              className="flex items-center justify-center gap-2 rounded-t-xl border border-black/20 px-3 py-3 text-center"
+              style={{ backgroundColor: bg, color: fg }}
             >
               <Trophy className="h-4 w-4 opacity-90" aria-hidden="true" />
               <span className="text-base font-bold font-display">{`Tier ${tier}`}</span>
@@ -73,10 +122,8 @@ export function TierBoard({
                         {e.player.username}
                       </span>
                       <ChevronsUp
-                        className={cn(
-                          "h-4 w-4 shrink-0",
-                          e.type === "HT" ? "text-emerald-400" : "text-muted-foreground",
-                        )}
+                        className="h-4 w-4 shrink-0"
+                        style={{ color: e.type === "HT" ? themeColors.htColor : themeColors.ltColor }}
                         aria-hidden="true"
                       />
                     </button>

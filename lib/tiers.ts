@@ -23,6 +23,11 @@ import {
 
 export type TierType = "HT" | "LT"
 
+// A tier list can rank players two ways:
+//  - "tier"   : classic HT/LT tiers (points derived from the tier table)
+//  - "points" : admin types a raw point number per gamemode; ranking is by that number
+export type TierlistMode = "tier" | "points"
+
 // A tier list is a self-contained board (e.g. "Main Tier", "Subtiers").
 // Each gamemode belongs to exactly one tier list, and points are summed
 // independently per tier list — they are never combined across lists.
@@ -31,6 +36,7 @@ export type Tierlist = {
   slug: string
   label: string
   sortOrder: number
+  mode: TierlistMode
 }
 
 // A gamemode configured in the admin panel (backed by the `gamemodes` table).
@@ -41,6 +47,47 @@ export type Gamemode = {
   icon: string
   sortOrder: number
   tierlistId: number
+  // Custom hex color chosen via the admin color wheel (null = use theme primary).
+  color: string | null
+}
+
+// Theme colors that admins can customize with the color wheel.
+export type ThemeColors = {
+  // Per-tier header/badge colors, keyed by tier number (1-5).
+  tierColors: Record<number, string>
+  // High-tier / low-tier accent colors used in the information panel + tier board.
+  htColor: string
+  ltColor: string
+}
+
+// Default per-tier colors (red shades — tier 1 darkest → tier 5 lightest).
+export const DEFAULT_TIER_COLORS: Record<number, string> = {
+  1: "#450a0a",
+  2: "#7f1d1d",
+  3: "#991b1b",
+  4: "#b91c1c",
+  5: "#dc2626",
+}
+
+export const DEFAULT_HT_COLOR = "#f43f5e"
+export const DEFAULT_LT_COLOR = "#10b981"
+
+export const DEFAULT_THEME_COLORS: ThemeColors = {
+  tierColors: DEFAULT_TIER_COLORS,
+  htColor: DEFAULT_HT_COLOR,
+  ltColor: DEFAULT_LT_COLOR,
+}
+
+// Returns a readable foreground (black/white) for a given hex background.
+export function readableOn(hex: string): string {
+  const c = hex.replace("#", "")
+  if (c.length < 6) return "#ffffff"
+  const r = Number.parseInt(c.slice(0, 2), 16)
+  const g = Number.parseInt(c.slice(2, 4), 16)
+  const b = Number.parseInt(c.slice(4, 6), 16)
+  // Perceived luminance.
+  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+  return lum > 0.6 ? "#111111" : "#ffffff"
 }
 
 // Icon registry — gamemodes store an icon key which maps to a lucide icon.
@@ -98,31 +145,33 @@ export function tierLabel(tier: number, type: TierType): string {
 // Title thresholds based on combined points (used in the "Overall" section + Titles tab).
 // These are now stored in the database (see `titles` table) and editable in the admin
 // panel. The list below is only a fallback used if the database has no titles configured.
-export type Title = { name: string; min: number; className: string }
+export type Title = { name: string; min: number; className: string; color?: string | null }
 
 export const TITLES: Title[] = [
-  { name: "SMARMY'S GRANDMASTER", min: 400, className: "text-amber-400" },
-  { name: "SMARMY'S MASTER", min: 250, className: "text-orange-400" },
-  { name: "SMARMY'S ACE", min: 100, className: "text-rose-400" },
-  { name: "SMARMY'S SPECIALIST", min: 50, className: "text-red-400" },
-  { name: "SMARMY'S CADET", min: 10, className: "text-red-300" },
-  { name: "SMARMY'S ROOKIE", min: 1, className: "text-muted-foreground" },
+  { name: "SMARMY'S GRANDMASTER", min: 400, className: "text-amber-400", color: "#fbbf24" },
+  { name: "SMARMY'S MASTER", min: 250, className: "text-orange-400", color: "#fb923c" },
+  { name: "SMARMY'S ACE", min: 100, className: "text-rose-400", color: "#fb7185" },
+  { name: "SMARMY'S SPECIALIST", min: 50, className: "text-red-400", color: "#f87171" },
+  { name: "SMARMY'S CADET", min: 10, className: "text-red-300", color: "#fca5a5" },
+  { name: "SMARMY'S ROOKIE", min: 1, className: "text-muted-foreground", color: null },
 ]
 
-export function titleFor(points: number): { name: string; className: string } {
+export type ResolvedTitle = { name: string; className: string; color: string | null }
+
+export function titleFor(points: number): ResolvedTitle {
   return titleForList(points, TITLES)
 }
 
 // Resolve a title from an arbitrary (database-backed) title list.
 export function titleForList(
   points: number,
-  titles: { name: string; min: number; className: string }[],
-): { name: string; className: string } {
+  titles: { name: string; min: number; className: string; color?: string | null }[],
+): ResolvedTitle {
   const sorted = [...titles].sort((a, b) => b.min - a.min)
   for (const t of sorted) {
-    if (points >= t.min) return { name: t.name, className: t.className }
+    if (points >= t.min) return { name: t.name, className: t.className, color: t.color ?? null }
   }
-  return { name: "UNRANKED", className: "text-muted-foreground" }
+  return { name: "UNRANKED", className: "text-muted-foreground", color: null }
 }
 
 // Diagonal rank tag colors for the overall leaderboard:
