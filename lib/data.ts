@@ -1,22 +1,35 @@
 import "server-only"
 import { query } from "./db"
 import { ensureSchema } from "./schema"
-import { pointsFor, type Gamemode, type Tierlist, type TierType } from "./tiers"
+import { pointsFor, type Gamemode, type Tierlist, type TierlistMode, type TierType } from "./tiers"
+import { resolveTitleColor } from "./colors"
 
-type RawTierlist = { id: number; slug: string; label: string; sort_order: number }
+type RawTierlist = { id: number; slug: string; label: string; sort_order: number; mode: string }
 
 // All configured tier lists, ordered for display.
 export async function getTierlists(): Promise<Tierlist[]> {
   await ensureSchema()
   const rows = await query<RawTierlist>(
-    `SELECT id, slug, label, sort_order FROM tierlists ORDER BY sort_order ASC, id ASC`,
+    `SELECT id, slug, label, sort_order, mode FROM tierlists ORDER BY sort_order ASC, id ASC`,
   )
   return rows.map((r) => ({
     id: r.id,
     slug: r.slug,
     label: r.label,
     sortOrder: r.sort_order,
+    mode: (r.mode === "points" ? "points" : "tiers") as TierlistMode,
   }))
+}
+
+// Map of gamemode slug -> owning tier list mode. Used to know whether a stored
+// player_tier row is a HT/LT tier or a raw points value.
+async function gamemodeModeMap(): Promise<Map<string, TierlistMode>> {
+  const rows = await query<{ slug: string; mode: string | null }>(
+    `SELECT g.slug, t.mode FROM gamemodes g LEFT JOIN tierlists t ON t.id = g.tierlist_id`,
+  )
+  const m = new Map<string, TierlistMode>()
+  for (const r of rows) m.set(r.slug, r.mode === "points" ? "points" : "tiers")
+  return m
 }
 
 type RawGamemode = {
@@ -49,6 +62,7 @@ export type PlayerTier = {
   tier: number
   tierType: TierType
   points: number
+  mode: TierlistMode
 }
 
 export type Player = {
@@ -70,18 +84,22 @@ type RawRow = {
   gamemode: string | null
   tier: number | null
   tier_type: string | null
+  points: number | null
 }
 
 // Returns every player with their per-gamemode tiers and combined total points.
 export async function getPlayers(): Promise<Player[]> {
   await ensureSchema()
-  const rows = await query<RawRow>(
-    `SELECT p.id, p.username, p.region, p.skin_url, p.skin_source,
-            t.gamemode, t.tier, t.tier_type
-     FROM players p
-     LEFT JOIN player_tiers t ON t.player_id = p.id
-     ORDER BY p.username ASC`,
-  )
+  const [rows, modes] = await Promise.all([
+    query<RawRow>(
+      `SELECT p.id, p.username, p.region, p.skin_url, p.skin_source,
+              t.gamemode, t.tier, t.tier_type, t.points
+       FROM players p
+       LEFT JOIN player_tiers t ON t.player_id = p.id
+       ORDER BY p.username ASC`,
+    ),
+    gamemodeModeMap(),
+  ])
 
   const map = new Map<number, Player>()
   for (const r of rows) {
@@ -98,7 +116,19 @@ export async function getPlayers(): Promise<Player[]> {
       }
       map.set(r.id, player)
     }
-    if (r.gamemode && r.tier && r.tier_type) {
+    if (!r.gamemode) continue
+    const mode = modes.get(r.gamemode) ?? "tiers"
+    if (mode === "points") {
+      const pts = r.points ?? 0
+      player.tiers.push({
+        gamemode: r.gamemode,
+        tier: 0,
+        tierType: "HT",
+        points: pts,
+        mode: "points",
+      })
+      player.totalPoints += pts
+    } else if (r.tier && r.tier_type) {
       const type = r.tier_type as TierType
       const pts = pointsFor(r.tier, type)
       player.tiers.push({
@@ -106,6 +136,7 @@ export async function getPlayers(): Promise<Player[]> {
         tier: r.tier,
         tierType: type,
         points: pts,
+        mode: "tiers",
       })
       player.totalPoints += pts
     }
@@ -127,6 +158,26 @@ export type TitleRow = {
   name: string
   min: number
   className: string
+  color: string
+}
+
+// All configured titles, highest threshold first.
+export async function getTitles(): Promise<TitleRow[]> {
+  await ensureSchema()
+  const rows = await query<{
+    id: number
+    name: string
+    min_points: number
+    class_name: string
+    color: string | null
+  }>(`SELECT id, name, min_points, class_name, color FROM titles ORDER BY min_points DESC`)
+  return rows.map((r) => ({
+    id: r.id,
+    name: r.name,
+    min: r.min_points,
+    className: r.class_name,
+    color: resolveTitleColor(r.color, r.class_name),
+  }))
 }
 
 // All configured titles, highest threshold first.

@@ -2,7 +2,6 @@
 
 import { ChevronsUp, Trophy } from "lucide-react"
 import type { Player } from "@/lib/data"
-import { tierHeaderClasses } from "@/lib/tiers"
 import { PlayerSkin } from "./player-skin"
 import { cn } from "@/lib/utils"
 
@@ -39,10 +38,11 @@ export function TierBoard({
         return (
           <div key={tier} className="flex w-48 shrink-0 flex-col lg:w-auto lg:flex-1">
             <div
-              className={cn(
-                "flex items-center justify-center gap-2 rounded-t-xl border px-3 py-3 text-center",
-                tierHeaderClasses(tier),
-              )}
+              className="flex items-center justify-center gap-2 rounded-t-xl border border-black/20 px-3 py-3 text-center"
+              style={{
+                backgroundColor: `var(--tier-${tier})`,
+                color: `var(--tier-${tier}-fg)`,
+              }}
             >
               <Trophy className="h-4 w-4 opacity-90" aria-hidden="true" />
               <span className="text-base font-bold font-display">{`Tier ${tier}`}</span>

@@ -1,6 +1,8 @@
 import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Oswald, Inter } from 'next/font/google'
+import { Suspense } from 'react'
+import { ThemeStyle } from '@/components/theme-style'
 import './globals.css'
 
 const oswald = Oswald({
@@ -38,6 +40,9 @@ export default function RootLayout({
   return (
     <html lang="en" className={`${oswald.variable} ${inter.variable} bg-background`}>
       <body className="font-sans antialiased">
+        <Suspense fallback={null}>
+          <ThemeStyle />
+        </Suspense>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

@@ -82,6 +82,19 @@
   --sidebar-accent-foreground: oklch(0.98 0.01 20);
   --sidebar-border: oklch(0.32 0.04 20 / 60%);
   --sidebar-ring: oklch(0.62 0.22 25);
+
+  /* Tier header colors (tier 1 = highest/darkest -> tier 5 = lightest).
+     Overridden at runtime by the admin color-wheel via <ThemeStyle />. */
+  --tier-1: #450a0a;
+  --tier-1-fg: #ffffff;
+  --tier-2: #7f1d1d;
+  --tier-2-fg: #ffffff;
+  --tier-3: #991b1b;
+  --tier-3-fg: #ffffff;
+  --tier-4: #b91c1c;
+  --tier-4-fg: #ffffff;
+  --tier-5: #dc2626;
+  --tier-5-fg: #ffffff;
 }
 
 /* Single fixed red dark theme; no OS-based overrides needed. */
